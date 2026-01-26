@@ -1,18 +1,25 @@
-const jwt = require("jsonwebtoken");
-
-exports.login = async (req, res) => {
+export const login = async (req, res) => {
   const { email, password } = req.body;
 
-  // fake example
-  const user = {
-    id: 1,
-    email,
-    role: email === "admin@gmail.com" ? "ADMIN" : "USER",
-  };
+  if (!email || !password) {
+    return res.status(400).json({ message: "Missing fields" });
+  }
 
-  const token = jwt.sign(user, process.env.JWT_SECRET, {
-    expiresIn: "1d",
-  });
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return res.status(401).json({ message: "User not found" });
+  }
 
-  res.json({ token, user });
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) {
+    return res.status(401).json({ message: "Wrong password" });
+  }
+
+  const token = jwt.sign(
+    { id: user.id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "1d" }
+  );
+
+  res.json({ token, role: user.role });
 };
