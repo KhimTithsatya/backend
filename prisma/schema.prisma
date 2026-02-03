@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   name      String
@@ -14,18 +19,49 @@ model User {
   password  String
   role      Role     @default(USER)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //  opposite relation for Meal.user
+  meals Meal[]
+}
+
+model Food {
+  id        Int      @id @default(autoincrement())
+  name      String
+  calories  Int
+  protein   Float? // optional
+  carbs     Float? // optional
+  fat       Float? // optional
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // foods can be used in many meal items
+  items MealItem[]
 }
 
 model Meal {
   id        Int      @id @default(autoincrement())
   name      String
-  calories  Int
   userId    Int
-  user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //  relation to User
+  user User @relation(fields: [userId], references: [id])
+
+  // a meal has many items (foods + quantity)
+  items MealItem[]
 }
 
-enum Role {
-  USER
-  ADMIN
+model MealItem {
+  id        Int      @id @default(autoincrement())
+  mealId    Int
+  foodId    Int
+  quantity  Int      @default(1) // 1 serving by default
+  createdAt DateTime @default(now())
+
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@unique([mealId, foodId]) // same food appears once per meal (quantity handles count)
 }

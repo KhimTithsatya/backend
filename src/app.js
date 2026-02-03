@@ -15,3 +15,4 @@ app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 
 module.exports = app;
+
