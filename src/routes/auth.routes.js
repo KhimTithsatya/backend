@@ -13,6 +13,14 @@ function signToken(user) {
   );
 }
 
+const authUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  profileImage: true
+};
+
 // POST /api/auth/register
 router.post("/register", async (req, res) => {
   try {
@@ -30,7 +38,7 @@ router.post("/register", async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: { name, email, password: hashed },
-      select: { id: true, name: true, email: true, role: true }
+      select: authUserSelect
     });
 
     const token = signToken(user);
@@ -64,7 +72,13 @@ router.post("/login", async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role }
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profileImage: user.profileImage || null
+      }
     });
   } catch (err) {
     console.error(err);
@@ -98,7 +112,13 @@ router.post("/social-login", async (req, res) => {
     const token = signToken(user);
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profileImage: user.profileImage || null
+      },
     });
   } catch (err) {
     console.error(err);

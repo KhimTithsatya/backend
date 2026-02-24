@@ -12,11 +12,20 @@ enum Role {
   ADMIN
 }
 
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+  OTHER
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   name      String
   email     String   @unique
   password  String
+  profileImage String? @db.LongText
   role      Role     @default(USER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -29,6 +38,7 @@ model Food {
   id        Int      @id @default(autoincrement())
   name      String
   calories  Int
+  image     String?  @db.LongText
   protein   Float? // optional
   carbs     Float? // optional
   fat       Float? // optional
@@ -43,6 +53,8 @@ model Meal {
   id        Int      @id @default(autoincrement())
   name      String
   userId    Int
+  plannedFor DateTime?
+  mealType  MealType @default(OTHER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
