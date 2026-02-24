@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 
 const prisma = require("../lib/prisma");
 
@@ -64,6 +65,40 @@ router.post("/login", async (req, res) => {
     res.json({
       token,
       user: { id: user.id, name: user.name, email: user.email, role: user.role }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// POST /api/auth/social-login
+router.post("/social-login", async (req, res) => {
+  try {
+    const { name, email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      const randomPassword = crypto.randomBytes(24).toString("hex");
+      const hashed = await bcrypt.hash(randomPassword, 10);
+      user = await prisma.user.create({
+        data: {
+          name: name || email.split("@")[0],
+          email,
+          password: hashed,
+        },
+      });
+    }
+
+    const token = signToken(user);
+    res.json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
     });
   } catch (err) {
     console.error(err);

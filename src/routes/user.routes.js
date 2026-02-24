@@ -7,8 +7,41 @@ router.get("/me", auth, (req, res) => {
   res.json(req.user);
 });
 
-router.get("/dashboard", auth, (req, res) => {
-  res.json({ message: "User dashboard data" });
+router.get("/dashboard", auth, async (req, res) => {
+  const userId = req.user.id;
+
+  const meals = await prisma.meal.findMany({
+    where: { userId },
+    include: {
+      items: {
+        select: {
+          quantity: true,
+          food: { select: { calories: true } }
+        }
+      }
+    }
+  });
+
+  const foodsTrackedRows = await prisma.mealItem.findMany({
+    where: { meal: { userId } },
+    select: { foodId: true },
+    distinct: ["foodId"]
+  });
+
+  const totalMeals = meals.length;
+  const totalCalories = meals.reduce((sum, meal) => {
+    const mealCalories = meal.items.reduce(
+      (itemSum, item) =>
+        itemSum + (item.food?.calories || 0) * (item.quantity || 0),
+      0
+    );
+    return sum + mealCalories;
+  }, 0);
+
+  const avgCalories = totalMeals > 0 ? Math.round(totalCalories / totalMeals) : 0;
+  const totalFoods = foodsTrackedRows.length;
+
+  res.json({ totalMeals, avgCalories, totalFoods, totalCalories });
 });
 
 // Meals for current user
@@ -43,6 +76,38 @@ router.post("/meals", auth, async (req, res) => {
     data: { name: String(name).trim(), userId }
   });
   res.status(201).json({ ...meal, calories: 0, items: [] });
+});
+
+router.put("/meals/:id", auth, async (req, res) => {
+  const userId = req.user.id;
+  const id = Number(req.params.id);
+  const { name } = req.body;
+
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ message: "Meal name is required" });
+  }
+
+  const existing = await prisma.meal.findUnique({ where: { id } });
+  if (!existing || existing.userId !== userId) {
+    return res.status(404).json({ message: "Meal not found" });
+  }
+
+  const updated = await prisma.meal.update({
+    where: { id },
+    data: { name: String(name).trim() },
+    include: {
+      items: {
+        include: { food: { select: { calories: true } } }
+      }
+    }
+  });
+
+  const calories = updated.items.reduce(
+    (sum, item) => sum + (item.food?.calories || 0) * (item.quantity || 0),
+    0
+  );
+
+  res.json({ ...updated, calories });
 });
 
 router.delete("/meals/:id", auth, async (req, res) => {
