@@ -1,9 +1,13 @@
 const router = require("express").Router();
+const bcrypt = require("bcryptjs");
 const auth = require("../middleware/auth.middleware");
 
 const prisma = require("../lib/prisma");
 const MEAL_TYPES = ["BREAKFAST", "LUNCH", "DINNER", "SNACK", "OTHER"];
 const MAX_DATA_URL_LENGTH = 5 * 1024 * 1024; // ~5MB chars
+const ACTIVITY_LEVELS = ["SEDENTARY", "LIGHT", "MODERATE", "ACTIVE", "VERY_ACTIVE"];
+const GOAL_TYPES = ["LOSE", "MAINTAIN", "GAIN"];
+const DATE_FORMATS = ["YYYY-MM-DD", "MM/DD/YYYY", "DD/MM/YYYY"];
 
 function buildMealInclude() {
   return {
@@ -84,27 +88,105 @@ function getMealPayload(body, { requireName }) {
   return { payload };
 }
 
+const profileSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  profileImage: true,
+  authProviders: true,
+  heightCm: true,
+  weightKg: true,
+  age: true,
+  sex: true,
+  activityLevel: true,
+  goalType: true,
+  dailyCalorieTarget: true,
+  proteinGoal: true,
+  carbsGoal: true,
+  fatGoal: true,
+  timezone: true,
+  dateFormat: true,
+  language: true,
+  notifyMealReminders: true,
+  notifyWeeklySummary: true,
+  createdAt: true,
+  updatedAt: true
+};
+
+function parseProvidersString(value) {
+  return String(value || "credentials")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function mapProfileResponse(user) {
+  return {
+    ...user,
+    authProviders: parseProvidersString(user.authProviders)
+  };
+}
+
+function parseOptionalNumber(value, fieldName, { min, max, integer = false } = {}) {
+  if (value === undefined) return { value: undefined };
+  if (value === null || value === "") return { value: null };
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return { error: `${fieldName} must be a number` };
+  }
+  if (integer && !Number.isInteger(parsed)) {
+    return { error: `${fieldName} must be an integer` };
+  }
+  if (min !== undefined && parsed < min) {
+    return { error: `${fieldName} must be at least ${min}` };
+  }
+  if (max !== undefined && parsed > max) {
+    return { error: `${fieldName} must be at most ${max}` };
+  }
+  return { value: parsed };
+}
+
 router.get("/me", auth, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
-    select: { id: true, name: true, email: true, role: true, profileImage: true }
+    select: profileSelect
   });
   if (!user) return res.status(404).json({ message: "User not found" });
-  res.json(user);
+  res.json(mapProfileResponse(user));
 });
 
 router.get("/profile", auth, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
-    select: { id: true, name: true, email: true, role: true, profileImage: true, createdAt: true, updatedAt: true }
+    select: profileSelect
   });
   if (!user) return res.status(404).json({ message: "User not found" });
-  res.json(user);
+  res.json(mapProfileResponse(user));
 });
 
 router.put("/profile", auth, async (req, res) => {
   const userId = req.user.id;
-  const { name, email, profileImage } = req.body || {};
+  const {
+    name,
+    email,
+    profileImage,
+    heightCm,
+    weightKg,
+    age,
+    sex,
+    activityLevel,
+    goalType,
+    dailyCalorieTarget,
+    proteinGoal,
+    carbsGoal,
+    fatGoal,
+    timezone,
+    dateFormat,
+    language,
+    notifyMealReminders,
+    notifyWeeklySummary
+  } = req.body || {};
 
   if (!name || !String(name).trim()) {
     return res.status(400).json({ message: "Name is required" });
@@ -124,17 +206,198 @@ router.put("/profile", auth, async (req, res) => {
     return res.status(409).json({ message: "Email already in use" });
   }
 
+  const parsedHeight = parseOptionalNumber(heightCm, "heightCm", { min: 50, max: 300 });
+  if (parsedHeight.error) return res.status(400).json({ message: parsedHeight.error });
+  const parsedWeight = parseOptionalNumber(weightKg, "weightKg", { min: 20, max: 500 });
+  if (parsedWeight.error) return res.status(400).json({ message: parsedWeight.error });
+  const parsedAge = parseOptionalNumber(age, "age", { min: 1, max: 120, integer: true });
+  if (parsedAge.error) return res.status(400).json({ message: parsedAge.error });
+  const parsedDaily = parseOptionalNumber(dailyCalorieTarget, "dailyCalorieTarget", { min: 500, max: 10000, integer: true });
+  if (parsedDaily.error) return res.status(400).json({ message: parsedDaily.error });
+  const parsedProtein = parseOptionalNumber(proteinGoal, "proteinGoal", { min: 0, max: 1000, integer: true });
+  if (parsedProtein.error) return res.status(400).json({ message: parsedProtein.error });
+  const parsedCarbs = parseOptionalNumber(carbsGoal, "carbsGoal", { min: 0, max: 1000, integer: true });
+  if (parsedCarbs.error) return res.status(400).json({ message: parsedCarbs.error });
+  const parsedFat = parseOptionalNumber(fatGoal, "fatGoal", { min: 0, max: 1000, integer: true });
+  if (parsedFat.error) return res.status(400).json({ message: parsedFat.error });
+
+  const normalizedActivity = activityLevel ? String(activityLevel).toUpperCase() : undefined;
+  if (normalizedActivity && !ACTIVITY_LEVELS.includes(normalizedActivity)) {
+    return res.status(400).json({ message: `activityLevel must be one of: ${ACTIVITY_LEVELS.join(", ")}` });
+  }
+
+  const normalizedGoal = goalType ? String(goalType).toUpperCase() : undefined;
+  if (normalizedGoal && !GOAL_TYPES.includes(normalizedGoal)) {
+    return res.status(400).json({ message: `goalType must be one of: ${GOAL_TYPES.join(", ")}` });
+  }
+
+  const normalizedDateFormat = dateFormat ? String(dateFormat).toUpperCase() : undefined;
+  if (normalizedDateFormat && !DATE_FORMATS.includes(normalizedDateFormat)) {
+    return res.status(400).json({ message: `dateFormat must be one of: ${DATE_FORMATS.join(", ")}` });
+  }
+
   const updated = await prisma.user.update({
     where: { id: userId },
     data: {
       name: String(name).trim(),
       email: emailText,
-      ...(parsedImage !== undefined ? { profileImage: parsedImage } : {})
+      ...(parsedImage !== undefined ? { profileImage: parsedImage } : {}),
+      ...(parsedHeight.value !== undefined ? { heightCm: parsedHeight.value } : {}),
+      ...(parsedWeight.value !== undefined ? { weightKg: parsedWeight.value } : {}),
+      ...(parsedAge.value !== undefined ? { age: parsedAge.value } : {}),
+      ...(sex !== undefined ? { sex: sex ? String(sex).trim() : null } : {}),
+      ...(normalizedActivity !== undefined ? { activityLevel: normalizedActivity } : {}),
+      ...(normalizedGoal !== undefined ? { goalType: normalizedGoal } : {}),
+      ...(parsedDaily.value !== undefined ? { dailyCalorieTarget: parsedDaily.value } : {}),
+      ...(parsedProtein.value !== undefined ? { proteinGoal: parsedProtein.value } : {}),
+      ...(parsedCarbs.value !== undefined ? { carbsGoal: parsedCarbs.value } : {}),
+      ...(parsedFat.value !== undefined ? { fatGoal: parsedFat.value } : {}),
+      ...(timezone !== undefined ? { timezone: timezone ? String(timezone).trim() : "UTC" } : {}),
+      ...(normalizedDateFormat !== undefined ? { dateFormat: normalizedDateFormat } : {}),
+      ...(language !== undefined ? { language: language ? String(language).trim() : "en" } : {}),
+      ...(notifyMealReminders !== undefined ? { notifyMealReminders: Boolean(notifyMealReminders) } : {}),
+      ...(notifyWeeklySummary !== undefined ? { notifyWeeklySummary: Boolean(notifyWeeklySummary) } : {})
     },
-    select: { id: true, name: true, email: true, role: true, profileImage: true, createdAt: true, updatedAt: true }
+    select: profileSelect
   });
 
-  res.json(updated);
+  res.json(mapProfileResponse(updated));
+});
+
+router.put("/password", auth, async (req, res) => {
+  const userId = req.user.id;
+  const { currentPassword, newPassword } = req.body || {};
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: "currentPassword and newPassword are required" });
+  }
+
+  if (String(newPassword).length < 6) {
+    return res.status(400).json({ message: "New password must be at least 6 characters" });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, password: true }
+  });
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  const match = await bcrypt.compare(String(currentPassword), user.password);
+  if (!match) {
+    return res.status(400).json({ message: "Current password is incorrect" });
+  }
+
+  const hashed = await bcrypt.hash(String(newPassword), 10);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        password: hashed,
+        sessionVersion: { increment: 1 }
+      }
+    });
+    await tx.userSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+  });
+
+  res.json({ message: "Password changed successfully. Please sign in again." });
+});
+
+router.get("/sessions", auth, async (req, res) => {
+  const userId = req.user.id;
+  const sid = req.user.sid || null;
+
+  const sessions = await prisma.userSession.findMany({
+    where: { userId, revokedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      sid: true,
+      userAgent: true,
+      ipAddress: true,
+      createdAt: true,
+      lastActiveAt: true
+    }
+  });
+
+  res.json(
+    sessions.map((session) => ({
+      ...session,
+      isCurrent: sid ? session.sid === sid : false
+    }))
+  );
+});
+
+router.post("/sessions/logout-all", auth, async (req, res) => {
+  const userId = req.user.id;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { sessionVersion: { increment: 1 } }
+    });
+    await tx.userSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+  });
+
+  res.json({ message: "All sessions logged out. Please sign in again." });
+});
+
+router.get("/me/export", auth, async (req, res) => {
+  const userId = req.user.id;
+
+  const [user, meals] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: profileSelect
+    }),
+    prisma.meal.findMany({
+      where: { userId },
+      include: buildMealInclude(),
+      orderBy: { createdAt: "desc" }
+    })
+  ]);
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  return res.json({
+    exportedAt: new Date().toISOString(),
+    profile: mapProfileResponse(user),
+    meals: meals.map(withCalories)
+  });
+});
+
+router.delete("/me", auth, async (req, res) => {
+  const userId = req.user.id;
+  const { password } = req.body || {};
+
+  if (!password) {
+    return res.status(400).json({ message: "Password is required to delete account" });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, password: true }
+  });
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  const match = await bcrypt.compare(String(password), user.password);
+  if (!match) {
+    return res.status(400).json({ message: "Password is incorrect" });
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+  return res.json({ message: "Account deleted" });
 });
 
 router.get("/dashboard", auth, async (req, res) => {

@@ -1,0 +1,40 @@
+-- AlterTable
+ALTER TABLE `User`
+  ADD COLUMN `authProviders` VARCHAR(191) NOT NULL DEFAULT 'credentials',
+  ADD COLUMN `sessionVersion` INTEGER NOT NULL DEFAULT 1,
+  ADD COLUMN `heightCm` DOUBLE NULL,
+  ADD COLUMN `weightKg` DOUBLE NULL,
+  ADD COLUMN `age` INTEGER NULL,
+  ADD COLUMN `sex` VARCHAR(191) NULL,
+  ADD COLUMN `activityLevel` VARCHAR(191) NULL,
+  ADD COLUMN `goalType` VARCHAR(191) NULL,
+  ADD COLUMN `dailyCalorieTarget` INTEGER NULL,
+  ADD COLUMN `proteinGoal` INTEGER NULL,
+  ADD COLUMN `carbsGoal` INTEGER NULL,
+  ADD COLUMN `fatGoal` INTEGER NULL,
+  ADD COLUMN `timezone` VARCHAR(191) NOT NULL DEFAULT 'UTC',
+  ADD COLUMN `dateFormat` VARCHAR(191) NOT NULL DEFAULT 'YYYY-MM-DD',
+  ADD COLUMN `language` VARCHAR(191) NOT NULL DEFAULT 'en',
+  ADD COLUMN `notifyMealReminders` BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN `notifyWeeklySummary` BOOLEAN NOT NULL DEFAULT true;
+
+-- CreateTable
+CREATE TABLE `UserSession` (
+  `id` INTEGER NOT NULL AUTO_INCREMENT,
+  `userId` INTEGER NOT NULL,
+  `sid` VARCHAR(191) NOT NULL,
+  `userAgent` VARCHAR(191) NULL,
+  `ipAddress` VARCHAR(191) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `lastActiveAt` DATETIME(3) NULL,
+  `revokedAt` DATETIME(3) NULL,
+
+  UNIQUE INDEX `UserSession_sid_key`(`sid`),
+  INDEX `UserSession_userId_idx`(`userId`),
+  PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- AddForeignKey
+ALTER TABLE `UserSession`
+  ADD CONSTRAINT `UserSession_userId_fkey`
+  FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;

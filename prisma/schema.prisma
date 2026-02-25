@@ -27,11 +27,30 @@ model User {
   password  String
   profileImage String? @db.LongText
   role      Role     @default(USER)
+  authProviders String @default("credentials")
+  sessionVersion Int @default(1)
+  heightCm Float?
+  weightKg Float?
+  age Int?
+  sex String?
+  activityLevel String?
+  goalType String?
+  dailyCalorieTarget Int?
+  proteinGoal Int?
+  carbsGoal Int?
+  fatGoal Int?
+  timezone String @default("UTC")
+  dateFormat String @default("YYYY-MM-DD")
+  language String @default("en")
+  notifyMealReminders Boolean @default(false)
+  notifyWeeklySummary Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   //  opposite relation for Meal.user
   meals Meal[]
+  passwordResetTokens PasswordResetToken[]
+  sessions UserSession[]
 }
 
 model Food {
@@ -76,4 +95,32 @@ model MealItem {
   food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
 
   @@unique([mealId, foodId]) // same food appears once per meal (quantity handles count)
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserSession {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  sid         String    @unique
+  userAgent   String?
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+  lastActiveAt DateTime?
+  revokedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
