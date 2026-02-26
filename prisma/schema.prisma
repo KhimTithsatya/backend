@@ -71,6 +71,7 @@ model Food {
 model Meal {
   id        Int      @id @default(autoincrement())
   name      String
+  description String? @db.Text
   userId    Int
   plannedFor DateTime?
   mealType  MealType @default(OTHER)

@@ -52,6 +52,16 @@ function parsePlannedFor(value) {
   return parsed;
 }
 
+function parseDescription(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") return "INVALID_DESCRIPTION";
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized.length > 1000) return "DESCRIPTION_TOO_LONG";
+  return normalized;
+}
+
 function sanitizeImageDataUrl(value, fieldName) {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
@@ -67,6 +77,7 @@ function getMealPayload(body, { requireName }) {
   const name = body?.name;
   const mealType = String(body?.mealType || "OTHER").toUpperCase();
   const plannedFor = parsePlannedFor(body?.plannedFor);
+  const description = parseDescription(body?.description);
 
   if (requireName || name !== undefined) {
     if (!name || !String(name).trim()) {
@@ -84,6 +95,16 @@ function getMealPayload(body, { requireName }) {
     return { error: "plannedFor must be a valid date in YYYY-MM-DD format" };
   }
   payload.plannedFor = plannedFor;
+
+  if (description === "INVALID_DESCRIPTION") {
+    return { error: "description must be a string" };
+  }
+  if (description === "DESCRIPTION_TOO_LONG") {
+    return { error: "description must be at most 1000 characters" };
+  }
+  if (description !== undefined) {
+    payload.description = description;
+  }
 
   return { payload };
 }

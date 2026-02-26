@@ -7,6 +7,16 @@ const prisma = require("../lib/prisma");
 const MAX_DATA_URL_LENGTH = 5 * 1024 * 1024; // ~5MB chars
 const MEAL_TYPES = ["BREAKFAST", "LUNCH", "DINNER", "SNACK", "OTHER"];
 
+function parseDescription(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") return "INVALID_DESCRIPTION";
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized.length > 1000) return "DESCRIPTION_TOO_LONG";
+  return normalized;
+}
+
 function sanitizeImageDataUrl(value, fieldName) {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
@@ -394,7 +404,7 @@ router.get("/meals", async (req, res) => {
 
 router.post("/meals", async (req, res) => {
   try {
-    const { userId, name, mealType, plannedFor } = req.body || {};
+    const { userId, name, mealType, plannedFor, description } = req.body || {};
     const parsedUserId = Number(userId);
 
     if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
@@ -407,6 +417,13 @@ router.post("/meals", async (req, res) => {
     const normalizedMealType = String(mealType || "OTHER").toUpperCase();
     if (!MEAL_TYPES.includes(normalizedMealType)) {
       return res.status(400).json({ message: "Invalid mealType" });
+    }
+    const parsedDescription = parseDescription(description);
+    if (parsedDescription === "INVALID_DESCRIPTION") {
+      return res.status(400).json({ message: "description must be a string" });
+    }
+    if (parsedDescription === "DESCRIPTION_TOO_LONG") {
+      return res.status(400).json({ message: "description must be at most 1000 characters" });
     }
 
     let parsedPlannedFor = null;
@@ -427,7 +444,8 @@ router.post("/meals", async (req, res) => {
         userId: parsedUserId,
         name: String(name).trim(),
         mealType: normalizedMealType,
-        plannedFor: parsedPlannedFor
+        plannedFor: parsedPlannedFor,
+        ...(parsedDescription !== undefined ? { description: parsedDescription } : {})
       },
       include: { user: { select: { id: true, name: true, email: true } } }
     });
@@ -442,7 +460,7 @@ router.post("/meals", async (req, res) => {
 router.put("/meals/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { userId, name, mealType, plannedFor } = req.body || {};
+    const { userId, name, mealType, plannedFor, description } = req.body || {};
     const parsedUserId = Number(userId);
 
     if (!Number.isInteger(id) || id <= 0) {
@@ -458,6 +476,13 @@ router.put("/meals/:id", async (req, res) => {
     const normalizedMealType = String(mealType || "OTHER").toUpperCase();
     if (!MEAL_TYPES.includes(normalizedMealType)) {
       return res.status(400).json({ message: "Invalid mealType" });
+    }
+    const parsedDescription = parseDescription(description);
+    if (parsedDescription === "INVALID_DESCRIPTION") {
+      return res.status(400).json({ message: "description must be a string" });
+    }
+    if (parsedDescription === "DESCRIPTION_TOO_LONG") {
+      return res.status(400).json({ message: "description must be at most 1000 characters" });
     }
 
     let parsedPlannedFor = null;
@@ -479,7 +504,8 @@ router.put("/meals/:id", async (req, res) => {
         userId: parsedUserId,
         name: String(name).trim(),
         mealType: normalizedMealType,
-        plannedFor: parsedPlannedFor
+        plannedFor: parsedPlannedFor,
+        ...(parsedDescription !== undefined ? { description: parsedDescription } : {})
       },
       include: { user: { select: { id: true, name: true, email: true } } }
     });
